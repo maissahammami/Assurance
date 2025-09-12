@@ -1,23 +1,20 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
-using data.Context1;
-using MediatR;
-
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.HttpsPolicy;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
+using domain.Interface;
+using data.Repositories;
+using domain.Data;
+using MediatR;
+using System.Reflection;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using System;
 
-
-namespace ProjectManagement.Api
+namespace Api
 {
     public class Startup
     {
@@ -28,88 +25,125 @@ namespace ProjectManagement.Api
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddCors(c =>
             {
-                c.AddPolicy("AllowOrigin",
-                    options =>
-                    options.AllowAnyOrigin()
-                    .AllowAnyMethod()
-                    .AllowAnyHeader()
-                    );
+                c.AddPolicy("AllowAngularApp",
+                    options => options.WithOrigins("http://localhost:4200", "https://localhost:4200")
+                                     .AllowAnyMethod()
+                                     .AllowAnyHeader()
+                                     .AllowCredentials());
             });
 
-            services.AddControllers();
-            services.AddMediatR(typeof(Startup));
-            services.AddMediatR(Assembly.GetExecutingAssembly());
+            services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.PropertyNamingPolicy = null;
+                    options.JsonSerializerOptions.WriteIndented = true;
+                });
 
-            services.AddDbContext<BibliothequeContext>(options =>
+            // Swagger
+            services.AddSwaggerGen(c =>
             {
-                options.UseSqlServer(Configuration.GetConnectionString("DevConnection"));
+                c.SwaggerDoc("v1", new OpenApiInfo
+                {
+                    Title = "API Assurance Santé",
+                    Version = "v1",
+                    Description = "API de gestion des assurances santé"
+                });
             });
 
-            //services.AddSwaggerGen(c =>
-            //{
-            //    c.SwaggerDoc("v1", new OpenApiInfo { Title = "BGT_Declasse Project", Version = "v1" });
-            //});
+            // EF Core avec votre contexte
+            services.AddDbContext<AssuranceDbContext>(options =>
+            {
+                options.UseSqlServer(Configuration.GetConnectionString("Connection"),
+                    sqlOptions => sqlOptions.MigrationsAssembly("data"));
+            });
 
-            services.AddAutoMapper(typeof(Startup));
-            //RegisterServices(services);
+            // MediatR - Configuration pour .NET Core 3.1
+            services.AddMediatR(
+                Assembly.GetExecutingAssembly(),
+                typeof(domain.Handlers.GetGenericHandlers<>).Assembly,
+                typeof(domain.Commands.AddGenericCommand<>).Assembly,
+                //il ya quelque chose qui cloche ici
+                typeof(domain.Queries.GetGenericQuery).Assembly
+            );
 
+            // Enregistrement des services
+            RegisterServices(services);
         }
 
-        //private void RegisterServices(IServiceCollection services)
-        //{
-        //    DependencyContainer.RegisterServices(services);
-        //}
+        private void RegisterServices(IServiceCollection services)
+        {
+            // Repository générique
+            services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+            // Repositories spécifiques
+            services.AddScoped<IAdherentRepository, AdherentRepository>();
+            services.AddScoped<IAgentRepository, AgentRepository>();
+            services.AddScoped<IDemandeAdhesionRepository, DemandeAdhesionRepository>();
+            services.AddScoped<ICotisationRepository, CotisationRepository>();
+            services.AddScoped<IFactureRepository, FactureRepository>();
+            services.AddScoped<IPaiementRepository, PaiementRepository>();
+            services.AddScoped<IDemandeContreVisiteRepository, DemandeContreVisiteRepository>();
+            services.AddScoped<IRapportMedicalRepository, RapportMedicalRepository>();
+            services.AddScoped<IMedecinControleRepository, MedecinControleRepository>();
+            services.AddScoped<IPlanSanteRepository, PlanSanteRepository>();
+            services.AddScoped<IReclamationRepository, ReclamationRepository>();
+        }
+
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
-            //app.UseSwagger();
-            //app.UseSwaggerUI(c =>
-            //{
-            //    c.SwaggerEndpoint("/swagger/v1/swagger.json", "BGT_Declasse Project V1");
-            //});
-            // else
-            // {
-            //     var path = Environment.GetEnvironmentVariable("service");
-            //     var basePath = ":31633/" + Environment.GetEnvironmentVariable("service");
-            //     app.UseExceptionHandler("/Error");
-            //     app.UseSwagger(c =>
-            //     {
-
-            //         c.RouteTemplate = "swagger/{documentName}/swagger.json";
-            //         c.PreSerializeFilters.Add((swaggerDoc, httpReq) => swaggerDoc.Servers = new List<OpenApiServer>
-            //         {
-            //             new OpenApiServer { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}"}
-            //         });
-
-            //     });
-
-            //     var endpoint = "/" + path + "/swagger/v1/swagger.json";
-            //     app.UseSwaggerUI(c =>
-            //     {
-            //         c.SwaggerEndpoint(endpoint, "API V1");
-            //     });
-            // }
 
             app.UseHttpsRedirection();
-
             app.UseRouting();
 
-            // app.UseAuthorization();
-            app.UseCors("AllowOrigin");
+            // CORS après UseRouting()
+            app.UseCors("AllowAngularApp");
+
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "API Assurance Santé v1");
+                c.RoutePrefix = "swagger";
+            });
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapGet("/", async context =>
+                {
+                    context.Response.Redirect("/swagger");
+                });
+            });
+
+            // Middleware de gestion d'erreurs global
+            app.Use(async (context, next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (Exception ex)
+                {
+                    context.Response.StatusCode = 500;
+                    context.Response.ContentType = "application/json";
+
+                    var errorResponse = new
+                    {
+                        error = "Une erreur interne s'est produite",
+                        message = ex.Message,
+                        stackTrace = env.IsDevelopment() ? ex.StackTrace : null
+                    };
+
+                    var json = JsonSerializer.Serialize(errorResponse);
+                    await context.Response.WriteAsync(json);
+                }
             });
         }
     }

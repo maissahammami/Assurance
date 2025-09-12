@@ -4,7 +4,9 @@ using System.Text;
 
 namespace domain.Commands
 {
-    internal class DeleteGenericCommand
+    public class DeleteGenericCommand
     {
+        public int Id { get; }
+        public DeleteGenericCommand(int id) => Id = id;
     }
 }

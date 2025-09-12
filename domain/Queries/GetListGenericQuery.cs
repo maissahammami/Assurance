@@ -4,7 +4,8 @@ using System.Text;
 
 namespace domain.Queries
 {
-    internal class GetListGenericQuery
+    public class GetListGenericQuery
     {
+
     }
 }

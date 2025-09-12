@@ -4,7 +4,9 @@ using System.Text;
 
 namespace domain.Queries
 {
-    internal class GetGenericQuery
+    public class GetGenericQuery
     {
+        public int Id { get; }
+        public GetGenericQuery(int id) => Id = id;
     }
 }
