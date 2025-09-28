@@ -115,14 +115,14 @@ pipeline {
             emailext (
                 subject: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
                 body: "The build was successful!\n\nCheck console output at: ${env.BUILD_URL}",
-                to: "maissa.hammami@example.com"
+                to: "maissa.hammami@esprit.tn"
             )
         }
         failure {
             emailext (
                 subject: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
                 body: "The build failed!\n\nCheck console output at: ${env.BUILD_URL}",
-                to: "maissa.hammami@example.com"
+                to: "maissa.hammami@esprit.tn"
             )
         }
     }
