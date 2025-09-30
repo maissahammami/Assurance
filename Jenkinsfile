@@ -1,9 +1,13 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'mcr.microsoft.com/dotnet/sdk:8.0'
+            args '-v /var/jenkins_home:/workspace'
+        }
+    }
     
     environment {
         DOTNET_VERSION = '8.0'
-        NODE_VERSION = '18'
     }
     
     stages {
@@ -15,93 +19,48 @@ pipeline {
         
         stage('Setup .NET') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh 'dotnet --version'
-                    } else {
-                        bat 'dotnet --version'
-                    }
-                }
+                sh 'dotnet --version'
             }
         }
         
         stage('Restore Dependencies') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh 'dotnet restore'
-                    } else {
-                        bat 'dotnet restore'
-                    }
-                }
+                sh 'dotnet restore'
             }
         }
         
         stage('Build') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh 'dotnet build --configuration Release --no-restore'
-                    } else {
-                        bat 'dotnet build --configuration Release --no-restore'
-                    }
-                }
+                sh 'dotnet build --configuration Release --no-restore'
             }
         }
         
         stage('Test') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh 'dotnet test --verbosity normal --no-build --configuration Release'
-                    } else {
-                        bat 'dotnet test --verbosity normal --no-build --configuration Release'
-                    }
-                }
+                sh 'dotnet test --verbosity normal --no-build --configuration Release'
             }
         }
         
         stage('Publish') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh 'dotnet publish -c Release -o ./publish'
-                    } else {
-                        bat 'dotnet publish -c Release -o ./publish'
-                    }
-                }
+                sh 'dotnet publish -c Release -o ./publish'
+                
+                // Archive the build output
+                archiveArtifacts artifacts: 'publish/**/*', fingerprint: true
             }
         }
         
         stage('Docker Build') {
+            agent any
             steps {
                 script {
-                    docker.build("assurance-backend:${env.BUILD_ID}")
-                }
-            }
-        }
-        
-        stage('Deploy to Staging') {
-            when {
-                branch 'develop'
-            }
-            steps {
-                script {
-                    echo "Deploying to staging environment"
-                    // Add your staging deployment commands
-                    // docker push assurance-backend:${env.BUILD_ID}
-                }
-            }
-        }
-        
-        stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    echo "Deploying to production environment"
-                    // Add your production deployment commands
+                    // Only build Docker if Dockerfile exists
+                    if (fileExists('Dockerfile')) {
+                        sh 'docker --version'
+                        sh "docker build -t assurance-backend:${env.BUILD_ID} ."
+                    } else {
+                        echo 'Dockerfile not found. Skipping Docker build.'
+                    }
                 }
             }
         }
@@ -112,6 +71,7 @@ pipeline {
             cleanWs()
         }
         success {
+            echo '🎉 .NET Backend built successfully!'
             emailext (
                 subject: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
                 body: "The build was successful!\n\nCheck console output at: ${env.BUILD_URL}",
@@ -119,6 +79,7 @@ pipeline {
             )
         }
         failure {
+            echo '❌ Build failed! Check console output for details.'
             emailext (
                 subject: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
                 body: "The build failed!\n\nCheck console output at: ${env.BUILD_URL}",
