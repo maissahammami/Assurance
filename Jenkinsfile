@@ -35,4 +35,18 @@ pipeline {
             cleanWs()
         }
     }
+    // Add after the Build stage
+stage('Publish Artifacts') {
+    steps {
+        sh 'dotnet publish -c Release -o ./publish'
+        archiveArtifacts artifacts: 'publish/**/*', fingerprint: true
+    }
+}
+
+stage('Security Scan') {
+    steps {
+        echo '🔒 Running security checks...'
+        // Add security scanning tools later
+    }
+}
 }
