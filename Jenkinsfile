@@ -1,3 +1,4 @@
+@"
 pipeline {
     agent any
     
@@ -90,3 +91,4 @@ pipeline {
         }
     }
 }
+"@ | Out-File -FilePath "Jenkinsfile" -Encoding utf8 -Force
